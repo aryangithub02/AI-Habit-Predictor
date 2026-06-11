@@ -1,0 +1,92 @@
+{
+    "Fat Loss": {
+        "principles": [
+            "Maintain a calorie deficit (expend more energy than consumed).",
+            "Consume adequate protein (1.6g - 2.2g per kg of bodyweight) to preserve lean muscle tissue.",
+            "Perform resistance training at least 3-4 times a week to stimulate muscle retention.",
+            "Prioritize sleep (7-8 hours) to regulate hunger hormones (leptin and ghrelin).",
+            "Increase Non-Exercise Activity Thermogenesis (NEAT) by targetting daily step counts.",
+            "Choose whole, high-volume, single-ingredient foods to maximize satiety."
+        ]
+    },
+    "Muscle Gain": {
+        "principles": [
+            "Maintain a slight caloric surplus (10% to 15% above maintenance).",
+            "Consume high protein (2.0g - 2.4g per kg of bodyweight) spaced evenly across 4-5 meals.",
+            "Apply progressive overload (gradually increasing weight, reps, or volume over time).",
+            "Target each major muscle group 2 times per week with structured hypertrophy splits.",
+            "Prioritize deep recovery, including 8+ hours of quality sleep and rest days.",
+            "Stay hydrated (3-4 liters of water daily) to optimize cell volume and performance."
+        ]
+    },
+    "Learning / DSA": {
+        "principles": [
+            "Utilize Spaced Repetition (reviewing concepts at expanding intervals to build long-term memory).",
+            "Practice Active Recall (testing yourself instead of passively reading text or slides).",
+            "Divide complex programming/algorithmic structures into smaller sub-problems.",
+            "Code solutions from scratch without copying, and analyze time/space complexity (Big O).",
+            "Maintain consistent daily practice (even 1-2 solved problems) to build pattern recognition.",
+            "Conduct post-mortems on failed solutions to understand logic and edge-case errors."
+        ]
+    },
+    "Career": {
+        "principles": [
+            "Dedicate uninterrupted time (90-minute blocks) to building deep, high-value technical skills.",
+            "Document your progress publicly (write blogs, build open-source projects, compile portfolio).",
+            "Engage in strategic networking (reach out to industry peers, ask for feedback, participate in meetups).",
+            "Optimize resume and online profiles (LinkedIn, GitHub) with clear projects and metrics.",
+            "Practice mock interviewing (both system design and behavioral rounds) weekly.",
+            "Build soft skills, particularly technical communication, presentation, and team collaboration."
+        ]
+    },
+    "Productivity": {
+        "principles": [
+            "Time-box your schedule (plan exactly when and where you will perform tasks).",
+            "Eliminate environmental distractions (phone notifications, social media blocking) during work blocks.",
+            "Focus on a single task at a time (avoid multitasking, which incurs switching costs).",
+            "Apply the 80/20 rule (identify and execute the 20% of actions that yield 80% of results).",
+            "Perform weekly reviews to evaluate completed tasks and align the upcoming week's priority list.",
+            "Adopt the 'Two-Minute Rule' for small tasks: if it takes less than 2 minutes, do it immediately."
+        ]
+    },
+    "Sleep & Wellness": {
+        "principles": [
+            "Maintain a consistent sleep-wake schedule, even on weekends, to align circadian rhythms.",
+            "Seek bright sunlight exposure within 30 minutes of waking to optimize morning cortisol.",
+            "Avoid blue light (screens, phones) and bright overhead lights for 1-2 hours before bed.",
+            "Keep the sleeping environment cool (around 18C / 65F), dark, and quiet.",
+            "Limit caffeine intake after 12:00 PM (noon) to ensure complete clearance before sleep.",
+            "Implement a relaxing evening wind-down routine (reading, stretching, journaling) to lower heart rate."
+        ]
+    },
+    "Mental Health": {
+        "principles": [
+            "Incorporate daily mindfulness, breathing exercises, or meditation to activate the parasympathetic system.",
+            "Keep a gratitude journal to shift focus from stressors to positive elements.",
+            "Ensure regular physical activity (walking, cycling) to stimulate dopamine and serotonin.",
+            "Establish clear boundaries between work/study and leisure to prevent burnout.",
+            "Seek daily social connection (speaking with family, friends, or team members).",
+            "Allocate dedicated downtime for hobbies and creative activities that do not require achievement pressure."
+        ]
+    },
+    "Finance": {
+        "principles": [
+            "Pay yourself first: automatically route a percentage of income to savings/investment on payday.",
+            "Track all daily expenses to identify and trim non-essential spending leaks.",
+            "Build an emergency fund covering 3-6 months of essential living expenses.",
+            "Invest consistently in low-cost index funds to harness compound interest.",
+            "Avoid high-interest consumer debt (credit cards, personal loans) entirely.",
+            "Set clear, mid-to-long term financial goals (saving for house, tuition, or retirement) and track milestones."
+        ]
+    },
+    "General Wellness": {
+        "principles": [
+            "Drink adequate water (30-35ml per kg of bodyweight) throughout the day.",
+            "Eat a diverse range of whole foods, focusing on fiber, micronutrients, and lean proteins.",
+            "Engage in at least 150 minutes of moderate cardiovascular exercise per week.",
+            "Move regularly: take short active breaks (stretching, walking) for every hour of sitting.",
+            "Practice dental and physical hygiene consistency daily.",
+            "Engage in preventive healthcare routines (stretching, posture corrections, annual checkups)."
+        ]
+    }
+}
