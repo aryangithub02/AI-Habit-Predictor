@@ -69,7 +69,7 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
       for (let i = 0; i < updatedHabits.length; i++) {
         if (!updatedHabits[i].prediction) {
           try {
-            const response = await fetch('http://localhost:8000/api/predict_failure', {
+            const response = await fetch('/api/predict_failure', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(updatedHabits[i])
@@ -118,7 +118,7 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
     setHabits(current => [...current, habitWithTempPrediction]);
 
     try {
-      const response = await fetch('http://localhost:8000/api/predict_failure', {
+      const response = await fetch('/api/predict_failure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newHabit)
@@ -167,7 +167,7 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
 
     if (requiresNewPrediction) {
       try {
-        const response = await fetch('http://localhost:8000/api/predict_failure', {
+        const response = await fetch('/api/predict_failure', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedHabit)
@@ -198,15 +198,17 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
     setEditingHabit(null);
   };
 
-  const handleLogActivity = async (habitName) => {
+  const handleLogActivity = async (habitName, customHabitsList = null) => {
     const now = new Date();
+    const todayStr = format(now, 'yyyy-MM-dd');
     const newActivity = {
-      date: format(now, 'yyyy-MM-dd'),
+      date: todayStr,
       time: format(now, 'HH:mm'),
       completed: true
     };
 
-    const updatedHabits = habits.map(h => {
+    const baseHabitsList = customHabitsList || habits;
+    const updatedHabits = baseHabitsList.map(h => {
       if (h.name === habitName) {
         const newStreak = h.current_streak + 1;
         return {
@@ -223,7 +225,7 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
 
     const targetHabit = updatedHabits.find(h => h.name === habitName);
     try {
-      const response = await fetch('http://localhost:8000/api/predict_failure', {
+      const response = await fetch('/api/predict_failure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(targetHabit)
@@ -237,6 +239,39 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleToggleTask = async (habitName, taskId) => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    let allCompleted = false;
+    let targetHabit = null;
+
+    const updatedHabits = habits.map(h => {
+      if (h.name === habitName) {
+        const updatedTasks = h.tasks.map(t => 
+          t.id === taskId ? { ...t, completed: !t.completed } : t
+        );
+        allCompleted = updatedTasks.every(t => t.completed);
+        targetHabit = {
+          ...h,
+          tasks: updatedTasks,
+          last_checked_date: todayStr
+        };
+        return targetHabit;
+      }
+      return h;
+    });
+
+    if (allCompleted && targetHabit) {
+      const isCompletedToday = targetHabit.activities && targetHabit.activities.some(a => a.date === todayStr && a.completed);
+      if (!isCompletedToday) {
+        await handleLogActivity(habitName, updatedHabits);
+      } else {
+        setHabits(updatedHabits);
+      }
+    } else {
+      setHabits(updatedHabits);
     }
   };
 
@@ -380,9 +415,9 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
           alignItems: 'start'
         }}>
           
-          {/* Sidebar: Guidelines (Left Side) */}
-          {activeGoals.length > 0 && (
-            <div className="flex-col gap-4">
+          {/* Sidebar: Guidelines & Configuration (Left Side) */}
+          <div className="flex-col gap-4">
+            {activeGoals.length > 0 && (
               <div className="glass-panel flex-col gap-4" style={{ height: 'fit-content' }}>
                 <div className="flex-row gap-2" style={{ borderBottom: '1px solid var(--border-glass)', paddingBottom: '0.8rem', marginBottom: '0.5rem' }}>
                   <Sparkles size={18} color="var(--accent-secondary)" style={{ flexShrink: 0 }} />
@@ -496,32 +531,30 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
                     </div>
                   )}
                 </div>
-
               </div>
+            )}
 
-              {/* Completed Goals Panel */}
-              {completedGoals.length > 0 && (
-                <div className="glass-panel flex-col gap-3" style={{ background: 'rgba(16, 185, 129, 0.05)', borderColor: 'rgba(16, 185, 129, 0.2)' }}>
-                  <div className="flex-row gap-2" style={{ borderBottom: '1px solid rgba(16, 185, 129, 0.15)', paddingBottom: '0.6rem' }}>
-                    <h3 style={{ fontSize: '1.1rem', color: '#34d399', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      🏆 Completed Goals
-                    </h3>
-                  </div>
-                  <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                    {completedGoals.map((g, i) => (
-                      <li key={i} style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', textDecoration: 'line-through' }}>
-                        {g.objective}
-                      </li>
-                    ))}
-                  </ul>
+            {completedGoals.length > 0 && (
+              <div className="glass-panel flex-col gap-3" style={{ background: 'rgba(16, 185, 129, 0.05)', borderColor: 'rgba(16, 185, 129, 0.2)' }}>
+                <div className="flex-row gap-2" style={{ borderBottom: '1px solid rgba(16, 185, 129, 0.15)', paddingBottom: '0.6rem' }}>
+                  <h3 style={{ fontSize: '1.1rem', color: '#34d399', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    🏆 Completed Goals
+                  </h3>
                 </div>
-              )}
-            </div>
-          )}
+                <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {completedGoals.map((g, i) => (
+                    <li key={i} style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', textDecoration: 'line-through' }}>
+                      {g.objective}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
 
           {/* Habits Grid (Right Side) */}
           <div style={{ 
-            gridColumn: activeGoals.length > 0 ? 'span 2' : 'span 1',
+            gridColumn: 'span 2',
             display: 'grid', 
             gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', 
             gap: '1.5rem' 
@@ -533,6 +566,7 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
                 onLogActivity={handleLogActivity} 
                 onEditHabit={handleOpenEditModal}
                 onDeleteHabit={handleDeleteHabit}
+                onToggleTask={(taskId) => handleToggleTask(habit.name, taskId)}
               />
             ))}
           </div>

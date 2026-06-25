@@ -3,6 +3,14 @@ import GoalOnboarding from './components/GoalOnboarding';
 import PlanReview from './components/PlanReview';
 import Dashboard from './components/Dashboard';
 
+const getTodayString = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 function App() {
   const [view, setView] = useState(() => {
     const savedPlans = localStorage.getItem('goal_plans');
@@ -41,10 +49,31 @@ function App() {
     localStorage.setItem('goal_plans', JSON.stringify(goalPlans));
   }, [goalPlans]);
 
+  // Check and reset checklist tasks daily on mount / date change
+  useEffect(() => {
+    const todayStr = getTodayString();
+    let updated = false;
+    const resetHabits = habits.map(h => {
+      if (h.tasks && h.tasks.length > 0 && h.last_checked_date !== todayStr) {
+        updated = true;
+        return {
+          ...h,
+          last_checked_date: todayStr,
+          tasks: h.tasks.map(t => ({ ...t, completed: false }))
+        };
+      }
+      return h;
+    });
+
+    if (updated) {
+      setHabits(resetHabits);
+    }
+  }, []);
+
   const handleOnboardingSubmit = async (onboardingData) => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/generate-plan', {
+      const response = await fetch('/api/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(onboardingData)
@@ -58,7 +87,7 @@ function App() {
       }
     } catch (e) {
       console.error(e);
-      alert("Error contacting API backend. Please ensure the backend is running on http://localhost:8000");
+      alert("Error contacting API backend. Please ensure the backend is running and accessible.");
     } finally {
       setIsLoading(false);
     }
@@ -67,7 +96,11 @@ function App() {
   const handleActivatePlan = (activatedHabits) => {
     setHabits(current => {
       const existingNames = new Set(current.map(h => h.name.toLowerCase()));
-      const filteredNew = activatedHabits.filter(h => !existingNames.has(h.name.toLowerCase()));
+      const updatedHabits = activatedHabits.map(h => ({
+        ...h,
+        last_checked_date: h.tasks && h.tasks.length > 0 ? getTodayString() : null
+      }));
+      const filteredNew = updatedHabits.filter(h => !existingNames.has(h.name.toLowerCase()));
       return [...current, ...filteredNew];
     });
     setGoalPlans(current => {

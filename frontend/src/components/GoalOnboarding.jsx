@@ -22,7 +22,7 @@ export default function GoalOnboarding({ onSubmit, isLoading, onCancel }) {
 
     setIsAnalyzing(true);
     try {
-      const response = await fetch('http://localhost:8000/api/analyze-goal', {
+      const response = await fetch('/api/analyze-goal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -37,7 +37,7 @@ export default function GoalOnboarding({ onSubmit, isLoading, onCancel }) {
       if (response.ok) {
         const data = await response.json();
         setGoalCategory(data.goal_category);
-        setQuestions(data.questions || []);
+        setQuestions((data.questions || []).map((q, i) => ({ ...q, key: q.key || `q${i}` })));
         
         // Initialize default answers
         const initialAnswers = {};
@@ -55,7 +55,7 @@ export default function GoalOnboarding({ onSubmit, isLoading, onCancel }) {
       }
     } catch (err) {
       console.error(err);
-      alert("Error contacting backend. Please ensure the backend is running on http://localhost:8000");
+      alert("Error contacting backend. Please ensure the backend is running and accessible.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -125,7 +125,6 @@ export default function GoalOnboarding({ onSubmit, isLoading, onCancel }) {
       </div>
 
       {step === 1 ? (
-        // STEP 1: INITIAL GOAL DETAILS FORM
         <form onSubmit={handleStep1Submit} className="flex-col gap-6">
           <div className="flex-col gap-2">
             <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

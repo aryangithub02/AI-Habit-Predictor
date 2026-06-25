@@ -49,7 +49,12 @@ export default function PlanReview({ plan, onActivate, onBack, onCancel }) {
         current_streak: 0,
         longest_streak: 0,
         activities: [],
-        prediction: null
+        prediction: null,
+        tasks: h.tasks ? h.tasks.map(taskText => ({
+          id: Math.random().toString(36).substr(2, 9),
+          text: taskText,
+          completed: false
+        })) : []
       }));
     onActivate(habitsToActivate);
   };

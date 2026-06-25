@@ -91,6 +91,7 @@ class PersonalizedHabit(BaseModel):
     target_days_per_week: int
     difficulty: str
     priority_score: float
+    tasks: Optional[List[str]] = []
 
 class GoalPlanResult(BaseModel):
     objective: str
@@ -103,7 +104,7 @@ class GoalPlanResult(BaseModel):
 
 # --- API Functions ---
 
-def analyze_habit_risk(data: HabitData) -> PredictionResult:
+def analyze_habit_risk(data: HabitData, api_key: Optional[str] = None) -> PredictionResult:
     """
     Predicts the likelihood of a user failing a habit using a local ML model
     and generates behavioral insights using an LLM.
@@ -189,8 +190,8 @@ def analyze_habit_risk(data: HabitData) -> PredictionResult:
         risk_score = "High"
 
     # 4. Check for API key to generate LLM insights
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key or api_key.strip() in ["", "your-key-here", "dummy-key"]:
+    effective_key = api_key or os.getenv("OPENROUTER_API_KEY")
+    if not effective_key or effective_key.strip() in ["", "your-key-here", "dummy-key"]:
         if risk_score == "Low":
             insights = ["Looking good! Your consistency is solid and your streak is active."]
             interventions = ["Maintain your current schedule and timing to keep the habit locked in."]
@@ -211,7 +212,7 @@ def analyze_habit_risk(data: HabitData) -> PredictionResult:
     # 5. Use LLM to generate explanatory behavioral insights
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
-        api_key=api_key,
+        api_key=effective_key,
     )
 
     prompt = f"""
@@ -348,18 +349,18 @@ FALLBACK_QUESTIONS = {
     ]
 }
 
-def analyze_goal_and_generate_questions(data: InitialGoalInput) -> GoalAnalysisResult:
+def analyze_goal_and_generate_questions(data: InitialGoalInput, api_key: Optional[str] = None) -> GoalAnalysisResult:
     """
     Analyzes the initial goal input, classifies it, and generates dynamic follow-up questions.
     """
     category = heuristic_classify_goal(data.goal)
     
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    effective_key = api_key or os.getenv("OPENROUTER_API_KEY")
     client = None
-    if api_key and api_key.strip() not in ["", "your-key-here", "dummy-key"]:
+    if effective_key and effective_key.strip() not in ["", "your-key-here", "dummy-key"]:
         client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
-            api_key=api_key
+            api_key=effective_key
         )
         
     fallback_questions = [
@@ -379,41 +380,28 @@ def analyze_goal_and_generate_questions(data: InitialGoalInput) -> GoalAnalysisR
         )
         
     prompt = f"""
-You are an expert behavior scientist and goal analyst.
-Analyze the user's initial goal details:
-- Goal: "{data.goal}"
-- Target Timeline: {data.timeline}
-- Time Available Per Day: {data.time_available_per_day}
-- Preferred Plan Intensity: {data.difficulty_preference}
-- Restrictions/Limitations: {data.restrictions or 'None'}
+You are a concise behavior analyst. Based on the user's initial goal details:
+- Goal: {data.goal}
+- Timeline: {data.timeline}
+- Daily time: {data.time_available_per_day}
+- Difficulty preference: {data.difficulty_preference}
+- Restrictions: {data.restrictions or 'None'}
 
 Your task:
-1. Classify the goal into exactly one of these categories:
-   "Fat Loss", "Muscle Gain", "Learning / DSA", "Career", "Productivity", "Sleep & Wellness", "Mental Health", "Finance", "General Wellness".
-2. Identify what specific physical, contextual, or baseline information is missing to generate a perfect, highly personalized habit/growth plan.
-3. Generate 3 to 4 precise, highly relevant follow-up questions to collect this missing information.
-   Each question must have:
-   - "question": The label/text of the question.
-   - "type": One of "number", "text", "dropdown".
-   - "options": A list of strings if type is "dropdown", otherwise null/empty.
-   - "key": A short camelCase or snake_case key (e.g., "currentWeight", "experienceLevel") to store the answer.
-
-Return a JSON response matching exactly this schema:
+1. Classify the goal into one of these categories: Fat Loss, Muscle Gain, Learning / DSA, Career, Productivity, Sleep & Wellness, Mental Health, Finance, General Wellness.
+2. Generate **1 to 2** short, clear follow‑up questions to collect any missing essential information. Each question should be a single sentence, with a simple type (number, text, or dropdown) and minimal options if needed.
+For **dropdown** questions, provide an "options" array containing at least two relevant choices.
+Return a JSON object exactly matching this schema:
 {{
     "goal_category": "Category",
-    "confidence": float (0.0 to 1.0),
+    "confidence": float,
     "questions": [
-        {{
-            "question": "Question text?",
-            "type": "number" | "text" | "dropdown",
-            "options": ["option1", "option2"] or null,
-            "key": "unique_key"
-        }}
+        {{"question": "...", "type": "text|number|dropdown", "options": ["opt1", "opt2"] or null, "key": "simpleKey"}}
     ]
 }}
-
-Return ONLY the raw JSON object, no markdown blocks, no other text.
+Only output the raw JSON, no extra text.
 """
+
     try:
         completion = client.chat.completions.create(
             model="liquid/lfm-2.5-1.2b-instruct:free",
@@ -422,19 +410,23 @@ Return ONLY the raw JSON object, no markdown blocks, no other text.
                 {"role": "user", "content": prompt}
             ],
             max_tokens=400,
-            temperature=0.3
+            temperature=0.3,
+            response_format={"type": "json_object"}
         )
         
         response_text = completion.choices[0].message.content
         result_dict = json.loads(response_text)
         
         questions = []
-        for q in result_dict.get("questions", []):
+        for idx, q in enumerate(result_dict.get("questions", [])):
+            options = q.get("options")
+            # Ensure a unique key for each question; fallback to generated key if missing or duplicate
+            key = q.get("key") or f"q{idx}"
             questions.append(FollowUpQuestion(
                 question=q.get("question", "Question?"),
                 type=q.get("type", "text"),
-                options=q.get("options"),
-                key=q.get("key", "key")
+                options=options,
+                key=key
             ))
             
         return GoalAnalysisResult(
@@ -458,8 +450,8 @@ def generate_fallback_plan(category: str, goal: str) -> GoalPlanResult:
     objective = f"Accomplish your goal: {goal}"
     metrics = ["Maintain consistency score above 80%", "Log habits at least 5 times per week"]
     habits = [
-        PersonalizedHabit(name="Drink 2L Water", description="Stay hydrated to maintain metabolic function and energy levels.", target_days_per_week=7, difficulty="Easy", priority_score=8.0),
-        PersonalizedHabit(name="Daily Active Walk", description="30 minutes of physical activity to boost baseline NEAT.", target_days_per_week=7, difficulty="Easy", priority_score=7.5)
+        PersonalizedHabit(name="Drink 2L Water", description="Stay hydrated to maintain metabolic function and energy levels.", target_days_per_week=7, difficulty="Easy", priority_score=8.0, tasks=["Morning (500ml)", "Afternoon (500ml)", "Evening (500ml)", "Night (500ml)"]),
+        PersonalizedHabit(name="Daily Active Walk", description="30 minutes of physical activity to boost baseline NEAT.", target_days_per_week=7, difficulty="Easy", priority_score=7.5, tasks=["Morning walk (15 mins)", "Evening walk (15 mins)"])
     ]
     nutrition = []
     exercise = ["Dedicate 30-45 minutes per day to physical activity.", "Perform standard resistance or cardiorespiratory exercises."]
@@ -469,9 +461,9 @@ def generate_fallback_plan(category: str, goal: str) -> GoalPlanResult:
         objective = f"Achieve sustainable weight reduction and fat loss: {goal}"
         metrics = ["Lose 0.5kg to 1kg per week safely", "Log daily food intake consistently"]
         habits = [
-            PersonalizedHabit(name="Track Daily Calories", description="Log all meals to stay within target calorie deficit.", target_days_per_week=7, difficulty="Easy", priority_score=9.0),
-            PersonalizedHabit(name="Daily Active Walk", description="30 minutes of brisk walking to increase daily calorie burn.", target_days_per_week=7, difficulty="Easy", priority_score=8.0),
-            PersonalizedHabit(name="Eat 100g Protein", description="Consume high-quality lean protein sources with main meals.", target_days_per_week=7, difficulty="Medium", priority_score=8.5)
+            PersonalizedHabit(name="Track Daily Calories", description="Log all meals to stay within target calorie deficit.", target_days_per_week=7, difficulty="Easy", priority_score=9.0, tasks=["Log Breakfast", "Log Lunch", "Log Dinner"]),
+            PersonalizedHabit(name="Daily Active Walk", description="30 minutes of brisk walking to increase daily calorie burn.", target_days_per_week=7, difficulty="Easy", priority_score=8.0, tasks=["Morning walk (15 mins)", "Evening walk (15 mins)"]),
+            PersonalizedHabit(name="Eat 100g Protein", description="Consume high-quality lean protein sources with main meals.", target_days_per_week=7, difficulty="Medium", priority_score=8.5, tasks=["30g protein at Breakfast", "30g protein at Lunch", "40g protein at Dinner"])
         ]
         nutrition = ["Maintain a calorie deficit of 300-500 kcal daily.", "Focus on eating high-fiber vegetables and lean proteins."]
         exercise = ["Perform 3-4 strength training sessions weekly.", "Aim for 8,000 to 10,000 daily steps."]
@@ -481,9 +473,9 @@ def generate_fallback_plan(category: str, goal: str) -> GoalPlanResult:
         objective = f"Build lean muscle mass and increase strength: {goal}"
         metrics = ["Gradually increase lifted weights weekly", "Consume target daily protein goals"]
         habits = [
-            PersonalizedHabit(name="Weight Lifting Session", description="Complete planned progressive resistance training.", target_days_per_week=4, difficulty="Hard", priority_score=9.5),
-            PersonalizedHabit(name="High Protein Meal", description="Consume high protein sources to support muscle protein synthesis.", target_days_per_week=7, difficulty="Easy", priority_score=9.0),
-            PersonalizedHabit(name="Track Workout Weights", description="Record sets, reps, and weights to monitor progression.", target_days_per_week=4, difficulty="Easy", priority_score=8.0)
+            PersonalizedHabit(name="Weight Lifting Session", description="Complete planned progressive resistance training.", target_days_per_week=4, difficulty="Hard", priority_score=9.5, tasks=["Warm up stretch", "Complete compound lifts", "Record sets & reps"]),
+            PersonalizedHabit(name="High Protein Meal", description="Consume high protein sources to support muscle protein synthesis.", target_days_per_week=7, difficulty="Easy", priority_score=9.0, tasks=["Consume high protein sources (lean meats, tofu, or whey)"]),
+            PersonalizedHabit(name="Track Workout Weights", description="Record sets, reps, and weights to monitor progression.", target_days_per_week=4, difficulty="Easy", priority_score=8.0, tasks=["Open logger app", "Record weights/reps of today's sets"])
         ]
         nutrition = ["Maintain a slight calorie surplus of 200-300 kcal daily.", "Ensure adequate protein intake of 1.6g to 2.2g per kg of bodyweight."]
         exercise = ["Perform compound lifting exercises (squats, bench, deadlifts).", "Train each muscle group 1.5-2 times per week."]
@@ -493,9 +485,9 @@ def generate_fallback_plan(category: str, goal: str) -> GoalPlanResult:
         objective = f"Master course content, algorithms, and concepts: {goal}"
         metrics = ["Solve 5 practice problems weekly", "Study core theoretical concepts daily"]
         habits = [
-            PersonalizedHabit(name="Solve 1 Practice Problem", description="Code and submit one algorithm or practice problem.", target_days_per_week=5, difficulty="Hard", priority_score=9.5),
-            PersonalizedHabit(name="Review Concept Tutorial", description="Spend 20 minutes studying data structures or theoretical concepts.", target_days_per_week=5, difficulty="Medium", priority_score=9.0),
-            PersonalizedHabit(name="Code 30 Minutes", description="Spend active time writing code on projects or exercises.", target_days_per_week=6, difficulty="Medium", priority_score=8.5)
+            PersonalizedHabit(name="Solve 1 Practice Problem", description="Code and submit one algorithm or practice problem.", target_days_per_week=5, difficulty="Hard", priority_score=9.5, tasks=["Understand problem statement", "Write dry run and pseudo-code", "Code & submit solution"]),
+            PersonalizedHabit(name="Review Concept Tutorial", description="Spend 20 minutes studying data structures or theoretical concepts.", target_days_per_week=5, difficulty="Medium", priority_score=9.0, tasks=["Watch study video or read article", "Take short summary notes"]),
+            PersonalizedHabit(name="Code 30 Minutes", description="Spend active time writing code on projects or exercises.", target_days_per_week=6, difficulty="Medium", priority_score=8.5, tasks=["Open IDE", "Code on project/exercises for 30 mins"])
         ]
         nutrition = []
         exercise = ["Take regular active breaks (e.g. stretch, stand) after sitting for long periods.", "Incorporate light physical exercises to clear the mind."]
@@ -505,9 +497,9 @@ def generate_fallback_plan(category: str, goal: str) -> GoalPlanResult:
         objective = f"Advance career opportunities and professional skills: {goal}"
         metrics = ["Submit 3 job applications weekly", "Learn 1 career-relevant skill weekly"]
         habits = [
-            PersonalizedHabit(name="Apply to 1 Job/Role", description="Research openings and submit one tailored application.", target_days_per_week=5, difficulty="Medium", priority_score=9.0),
-            PersonalizedHabit(name="Network on LinkedIn", description="Connect with professionals or write a professional post.", target_days_per_week=3, difficulty="Medium", priority_score=7.5),
-            PersonalizedHabit(name="Skill Development (45m)", description="Spend time studying industry-relevant tools, languages, or skills.", target_days_per_week=5, difficulty="Medium", priority_score=9.5)
+            PersonalizedHabit(name="Apply to 1 Job/Role", description="Research openings and submit one tailored application.", target_days_per_week=5, difficulty="Medium", priority_score=9.0, tasks=["Tailor resume for role", "Submit application", "Log application in tracker"]),
+            PersonalizedHabit(name="Network on LinkedIn", description="Connect with professionals or write a professional post.", target_days_per_week=3, difficulty="Medium", priority_score=7.5, tasks=["Send 1 connection request with note", "Engage with 2 industry posts"]),
+            PersonalizedHabit(name="Skill Development (45m)", description="Spend time studying industry-relevant tools, languages, or skills.", target_days_per_week=5, difficulty="Medium", priority_score=9.5, tasks=["Study tutorial or read docs", "Practice new concepts in code"])
         ]
         nutrition = []
         exercise = ["Maintain good posture during long study/work sessions.", "Walk outdoors to clear thoughts and build confidence."]
@@ -517,9 +509,9 @@ def generate_fallback_plan(category: str, goal: str) -> GoalPlanResult:
         objective = f"Improve daily focus, task execution, and time management: {goal}"
         metrics = ["Complete top 3 daily priorities", "Reduce daily screen time or distractions by 20%"]
         habits = [
-            PersonalizedHabit(name="Daily Task Planning", description="Write down top 3 priority tasks first thing in the morning.", target_days_per_week=7, difficulty="Easy", priority_score=9.0),
-            PersonalizedHabit(name="Deep Work Block (90m)", description="Work on your highest priority task with all notifications muted.", target_days_per_week=5, difficulty="Hard", priority_score=9.5),
-            PersonalizedHabit(name="Declutter Workspace", description="Spend 5 minutes organizing physical desk at end of day.", target_days_per_week=7, difficulty="Easy", priority_score=7.0)
+            PersonalizedHabit(name="Daily Task Planning", description="Write down top 3 priority tasks first thing in the morning.", target_days_per_week=7, difficulty="Easy", priority_score=9.0, tasks=["Write top 3 priority tasks", "Review today's schedule"]),
+            PersonalizedHabit(name="Deep Work Block (90m)", description="Work on your highest priority task with all notifications muted.", target_days_per_week=5, difficulty="Hard", priority_score=9.5, tasks=["Mute all notifications", "Focus on top priority for 90 mins"]),
+            PersonalizedHabit(name="Declutter Workspace", description="Spend 5 minutes organizing physical desk at end of day.", target_days_per_week=7, difficulty="Easy", priority_score=7.0, tasks=["Clear desk of cups/paper", "Wipe down keyboard/mouse"])
         ]
         nutrition = []
         exercise = ["Take short walks to reset attention span between deep work blocks."]
@@ -529,9 +521,9 @@ def generate_fallback_plan(category: str, goal: str) -> GoalPlanResult:
         objective = f"Optimize sleep quality, circadian rhythm, and morning energy: {goal}"
         metrics = ["Wake up within 30 minutes of target time daily", "Log 7.5+ hours of sleep nightly"]
         habits = [
-            PersonalizedHabit(name="Screens Off 1hr Before Bed", description="Avoid blue light to allow melatonin production.", target_days_per_week=7, difficulty="Medium", priority_score=9.5),
-            PersonalizedHabit(name="Consistent Wake Time", description="Wake up at the same time every morning, including weekends.", target_days_per_week=7, difficulty="Hard", priority_score=9.0),
-            PersonalizedHabit(name="Wind-down Routine (15m)", description="Read, journal, or stretch instead of browsing phone before sleep.", target_days_per_week=7, difficulty="Easy", priority_score=8.5)
+            PersonalizedHabit(name="Screens Off 1hr Before Bed", description="Avoid blue light to allow melatonin production.", target_days_per_week=7, difficulty="Medium", priority_score=9.5, tasks=["Put phone away/charge in other room", "Wind-down without screens"]),
+            PersonalizedHabit(name="Consistent Wake Time", description="Wake up at the same time every morning, including weekends.", target_days_per_week=7, difficulty="Hard", priority_score=9.0, tasks=["Get out of bed at alarm time", "Get morning sunlight exposure"]),
+            PersonalizedHabit(name="Wind-down Routine (15m)", description="Read, journal, or stretch instead of browsing phone before sleep.", target_days_per_week=7, difficulty="Easy", priority_score=8.5, tasks=["15-minute screen-free activity (reading/stretching)"])
         ]
         nutrition = ["Avoid caffeine, heavy meals, and alcohol 4-6 hours before bedtime."]
         exercise = ["Engage in moderate physical exercise during daylight hours to promote deep sleep."]
@@ -541,9 +533,9 @@ def generate_fallback_plan(category: str, goal: str) -> GoalPlanResult:
         objective = f"Reduce daily anxiety, build resilience, and improve mood: {goal}"
         metrics = ["Complete daily mindfulness session", "Track emotional well-being twice daily"]
         habits = [
-            PersonalizedHabit(name="Mindful Meditation (10m)", description="Practice breathwork or guided meditation to calm nervous system.", target_days_per_week=7, difficulty="Easy", priority_score=9.5),
-            PersonalizedHabit(name="Gratitude Journaling", description="Write down 3 specific things you are thankful for today.", target_days_per_week=7, difficulty="Easy", priority_score=8.0),
-            PersonalizedHabit(name="No Social Media First Hour", description="Avoid doomscrolling first thing in the morning.", target_days_per_week=7, difficulty="Medium", priority_score=8.5)
+            PersonalizedHabit(name="Mindful Meditation (10m)", description="Practice breathwork or guided meditation to calm nervous system.", target_days_per_week=7, difficulty="Easy", priority_score=9.5, tasks=["Find quiet space", "Complete 10-minute meditation session"]),
+            PersonalizedHabit(name="Gratitude Journaling", description="Write down 3 specific things you are thankful for today.", target_days_per_week=7, difficulty="Easy", priority_score=8.0, tasks=["Write down 3 things you are thankful for today"]),
+            PersonalizedHabit(name="No Social Media First Hour", description="Avoid doomscrolling first thing in the morning.", target_days_per_week=7, difficulty="Medium", priority_score=8.5, tasks=["Avoid opening social media apps for the first hour of the day"])
         ]
         nutrition = []
         exercise = ["Engage in rhythmic movement (walking, swimming, yoga) to regulate stress hormones."]
@@ -553,9 +545,9 @@ def generate_fallback_plan(category: str, goal: str) -> GoalPlanResult:
         objective = f"Achieve budget compliance, save money, and invest wisely: {goal}"
         metrics = ["Maintain savings rate above target percentage", "Zero impulsive/non-budget purchases"]
         habits = [
-            PersonalizedHabit(name="Log Daily Expenses", description="Record every single expense in budgeting sheet or app.", target_days_per_week=7, difficulty="Easy", priority_score=9.5),
-            PersonalizedHabit(name="No Non-Essential Spend", description="Check budget before buying any non-essential items.", target_days_per_week=6, difficulty="Medium", priority_score=8.5),
-            PersonalizedHabit(name="Review Weekly Budget", description="Assess total spending against weekly limit and adjust.", target_days_per_week=1, difficulty="Easy", priority_score=9.0)
+            PersonalizedHabit(name="Log Daily Expenses", description="Record every single expense in budgeting sheet or app.", target_days_per_week=7, difficulty="Easy", priority_score=9.5, tasks=["Record today's transactions in sheet/app", "Assess budget compliance"]),
+            PersonalizedHabit(name="No Non-Essential Spend", description="Check budget before buying any non-essential items.", target_days_per_week=6, difficulty="Medium", priority_score=8.5, tasks=["Verify necessity before purchase", "Check weekly budget limit"]),
+            PersonalizedHabit(name="Review Weekly Budget", description="Assess total spending against weekly limit and adjust.", target_days_per_week=1, difficulty="Easy", priority_score=9.0, tasks=["Total up weekly spending", "Adjust budget categories for next week"])
         ]
         nutrition = ["Consider packing lunch or preparing meals at home to save on dining costs."]
         exercise = ["Use home workouts, active outdoor walks, or free local parks for fitness."]
@@ -571,18 +563,18 @@ def generate_fallback_plan(category: str, goal: str) -> GoalPlanResult:
         recovery_guidelines=recovery
     )
 
-def generate_dynamic_goal_plan(input_data: DynamicGoalPlanInput) -> GoalPlanResult:
+def generate_dynamic_goal_plan(input_data: DynamicGoalPlanInput, api_key: Optional[str] = None) -> GoalPlanResult:
     """
     Generates a personalized plan with recommended habits, nutrition, exercise, and recovery guidelines
     based on initial input, category, and answers.
     """
     category = input_data.goal_category
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    effective_key = api_key or os.getenv("OPENROUTER_API_KEY")
     client = None
-    if api_key and api_key.strip() not in ["", "your-key-here", "dummy-key"]:
+    if effective_key and effective_key.strip() not in ["", "your-key-here", "dummy-key"]:
         client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
-            api_key=api_key
+            api_key=effective_key
         )
         
     fallback_plan = generate_fallback_plan(category, input_data.initial_input.goal)
@@ -637,13 +629,16 @@ Provide a JSON response matching exactly this schema:
             "description": "Specific guideline matching availability",
             "target_days_per_week": int (1-7),
             "difficulty": "Easy" | "Medium" | "Hard",
-            "priority_score": float (1.0 to 10.0)
+            "priority_score": float (1.0 to 10.0),
+            "tasks": ["custom daily sub-task 1", "custom daily sub-task 2"]
         }}
     ],
     "nutrition_guidelines": ["nutrition tip 1", "nutrition tip 2"],
     "exercise_guidelines": ["exercise tip 1", "exercise tip 2"],
     "recovery_guidelines": ["recovery tip 1", "recovery tip 2"]
 }}
+
+For each recommended habit, include a "tasks" array containing 2 to 4 specific, actionable daily sub-tasks (checklist items) that must be checked off to complete that habit.
 
 Return ONLY the raw JSON object, no markdown blocks, no other text.
 """
@@ -654,7 +649,7 @@ Return ONLY the raw JSON object, no markdown blocks, no other text.
                 {"role": "system", "content": "You are an AI that outputs pure JSON."},
                 {"role": "user", "content": generate_prompt}
             ],
-            max_tokens=600,
+            max_tokens=800,
             temperature=0.3
         )
         response_text = completion.choices[0].message.content
@@ -667,7 +662,8 @@ Return ONLY the raw JSON object, no markdown blocks, no other text.
                 description=h.get("description", ""),
                 target_days_per_week=int(h.get("target_days_per_week", 5)),
                 difficulty=h.get("difficulty", "Medium"),
-                priority_score=float(h.get("priority_score", 5.0))
+                priority_score=float(h.get("priority_score", 5.0)),
+                tasks=h.get("tasks", [])
             ))
             
         return GoalPlanResult(

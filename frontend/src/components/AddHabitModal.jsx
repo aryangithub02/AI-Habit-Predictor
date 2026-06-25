@@ -4,30 +4,74 @@ import { X, Calendar, Plus, Check } from 'lucide-react';
 export default function AddHabitModal({ isOpen, onClose, onAddHabit, onEditHabit, habitToEdit }) {
   const [name, setName] = useState('');
   const [targetDays, setTargetDays] = useState(5);
+  const [tasksList, setTasksList] = useState([]);
+  const [newTaskText, setNewTaskText] = useState('');
+
+  const getTodayString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   useEffect(() => {
     if (isOpen) {
       if (habitToEdit) {
         setName(habitToEdit.name);
         setTargetDays(habitToEdit.target_days_per_week);
+        setTasksList(habitToEdit.tasks ? habitToEdit.tasks.map(t => t.text) : []);
       } else {
         setName('');
         setTargetDays(5);
+        setTasksList([]);
       }
+      setNewTaskText('');
     }
   }, [habitToEdit, isOpen]);
 
   if (!isOpen) return null;
 
+  const handleAddTask = () => {
+    if (newTaskText.trim()) {
+      setTasksList([...tasksList, newTaskText.trim()]);
+      setNewTaskText('');
+    }
+  };
+
+  const handleRemoveTask = (index) => {
+    setTasksList(tasksList.filter((_, i) => i !== index));
+  };
+
+  const handleNewTaskKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddTask();
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim()) return;
+
+    const finalTasks = tasksList.map(text => {
+      const existingTask = habitToEdit && habitToEdit.tasks && habitToEdit.tasks.find(t => t.text === text);
+      return existingTask || {
+        id: Math.random().toString(36).substr(2, 9),
+        text,
+        completed: false
+      };
+    });
+
+    const todayStr = getTodayString();
 
     if (habitToEdit) {
       onEditHabit(habitToEdit.name, {
         ...habitToEdit,
         name: name.trim(),
-        target_days_per_week: parseInt(targetDays, 10)
+        target_days_per_week: parseInt(targetDays, 10),
+        tasks: finalTasks,
+        last_checked_date: finalTasks.length > 0 ? (habitToEdit.last_checked_date || todayStr) : null
       });
     } else {
       onAddHabit({
@@ -36,12 +80,16 @@ export default function AddHabitModal({ isOpen, onClose, onAddHabit, onEditHabit
         current_streak: 0,
         longest_streak: 0,
         activities: [],
-        prediction: null
+        prediction: null,
+        tasks: finalTasks,
+        last_checked_date: finalTasks.length > 0 ? todayStr : null
       });
     }
 
     setName('');
     setTargetDays(5);
+    setTasksList([]);
+    setNewTaskText('');
     onClose();
   };
 
@@ -98,6 +146,67 @@ export default function AddHabitModal({ isOpen, onClose, onAddHabit, onEditHabit
               <span>6d</span>
               <span>7d</span>
             </div>
+          </div>
+
+          <div className="flex-col gap-2" style={{ marginTop: '0.5rem' }}>
+            <label className="input-label">Daily Checklist / Sub-tasks (Optional)</label>
+            <div className="flex-row gap-2">
+              <input 
+                type="text" 
+                placeholder="e.g. Morning 500ml, Read 10 mins..." 
+                value={newTaskText} 
+                onChange={(e) => setNewTaskText(e.target.value)} 
+                onKeyDown={handleNewTaskKeyDown}
+                className="input-field"
+                style={{ flex: 1 }}
+              />
+              <button 
+                type="button" 
+                onClick={handleAddTask} 
+                className="btn"
+                style={{ padding: '0.8rem', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'rgba(99, 102, 241, 0.3)' }}
+              >
+                Add
+              </button>
+            </div>
+            
+            {tasksList.length > 0 && (
+              <div className="flex-col gap-2" style={{ 
+                marginTop: '0.5rem', 
+                maxHeight: '120px', 
+                overflowY: 'auto',
+                background: 'rgba(0, 0, 0, 0.15)',
+                padding: '0.5rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border-glass)'
+              }}>
+                {tasksList.map((task, index) => (
+                  <div key={index} className="flex-row justify-between animate-fade-in" style={{ 
+                    background: 'rgba(255, 255, 255, 0.03)', 
+                    padding: '0.4rem 0.8rem', 
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255, 255, 255, 0.05)'
+                  }}>
+                    <span style={{ fontSize: '0.9rem', color: '#fff', wordBreak: 'break-all' }}>{task}</span>
+                    <button 
+                      type="button" 
+                      onClick={() => handleRemoveTask(index)}
+                      style={{ 
+                        background: 'transparent', 
+                        border: 'none', 
+                        color: 'var(--status-high)', 
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: '500',
+                        padding: '0 4px'
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex-row gap-4 modal-actions">
