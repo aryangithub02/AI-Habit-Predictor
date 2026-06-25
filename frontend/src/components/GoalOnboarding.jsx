@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Target, ArrowRight, ArrowLeft, Clock, Compass, HelpCircle, Activity, X } from 'lucide-react';
+import { analyzeGoalAndGenerateQuestions } from '../utils/aiEngine';
 
 export default function GoalOnboarding({ onSubmit, isLoading, onCancel }) {
   // Step 1 states
@@ -22,40 +23,31 @@ export default function GoalOnboarding({ onSubmit, isLoading, onCancel }) {
 
     setIsAnalyzing(true);
     try {
-      const response = await fetch('/api/analyze-goal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          goal: goal.trim(),
-          timeline,
-          time_available_per_day: availableTime,
-          difficulty_preference: difficulty,
-          restrictions: restrictions.trim()
-        })
+      const data = await analyzeGoalAndGenerateQuestions({
+        goal: goal.trim(),
+        timeline,
+        time_available_per_day: availableTime,
+        difficulty_preference: difficulty,
+        restrictions: restrictions.trim()
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setGoalCategory(data.goal_category);
-        setQuestions((data.questions || []).map((q, i) => ({ ...q, key: q.key || `q${i}` })));
-        
-        // Initialize default answers
-        const initialAnswers = {};
-        (data.questions || []).forEach(q => {
-          if (q.type === 'dropdown' && q.options && q.options.length > 0) {
-            initialAnswers[q.key] = q.options[0];
-          } else {
-            initialAnswers[q.key] = '';
-          }
-        });
-        setAnswers(initialAnswers);
-        setStep(2);
-      } else {
-        alert("Failed to analyze goal. Please try again.");
-      }
+      setGoalCategory(data.goal_category);
+      setQuestions((data.questions || []).map((q, i) => ({ ...q, key: q.key || `q${i}` })));
+      
+      // Initialize default answers
+      const initialAnswers = {};
+      (data.questions || []).forEach(q => {
+        if (q.type === 'dropdown' && q.options && q.options.length > 0) {
+          initialAnswers[q.key] = q.options[0];
+        } else {
+          initialAnswers[q.key] = '';
+        }
+      });
+      setAnswers(initialAnswers);
+      setStep(2);
     } catch (err) {
       console.error(err);
-      alert("Error contacting backend. Please ensure the backend is running and accessible.");
+      alert("Failed to analyze goal.");
     } finally {
       setIsAnalyzing(false);
     }

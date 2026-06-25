@@ -14,6 +14,7 @@ import {
   Edit3
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { analyzeHabitRisk } from '../utils/aiEngine';
 
 export default function Dashboard({ habits, setHabits, goalPlans = [], onCompleteGoal, onUpdateGoalPlan, onResetGoal, onAddNewGoal }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -50,54 +51,28 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
     return isDietPlanApplicable() ? 'nutrition' : 'exercise';
   });
 
-  // Fetch predictions for all habits that lack one on mount
+  // Calculate predictions for all habits that lack one on mount
   useEffect(() => {
-    const fetchPredictions = async () => {
-      let needsPrediction = false;
-      const updatedHabits = habits.map(h => {
-        if (!h.prediction) {
-          needsPrediction = true;
-        }
-        return { ...h };
-      });
-
-      if (!needsPrediction) {
-        setLoading(false);
-        return;
-      }
-
+    const calculateMountPredictions = async () => {
+      let updated = false;
+      const updatedHabits = [...habits];
       for (let i = 0; i < updatedHabits.length; i++) {
         if (!updatedHabits[i].prediction) {
-          try {
-            const response = await fetch('/api/predict_failure', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(updatedHabits[i])
-            });
-            
-            if (response.ok) {
-              const data = await response.json();
-              updatedHabits[i].prediction = data;
-            } else {
-              throw new Error("API error status: " + response.status);
-            }
-          } catch (error) {
-            console.error("Failed to fetch prediction for", updatedHabits[i].name, error);
-            updatedHabits[i].prediction = {
-              risk_score: "Low",
-              failure_probability: 0.1,
-              insights: ["Local backup inference. Configure OpenRouter key to unlock full AI explanation."],
-              interventions: ["Keep up the consistency!"]
-            };
-          }
+          updated = true;
+          updatedHabits[i] = {
+            ...updatedHabits[i],
+            prediction: await analyzeHabitRisk(updatedHabits[i])
+          };
         }
       }
-      setHabits(updatedHabits);
+      if (updated) {
+        setHabits(updatedHabits);
+      }
       setLoading(false);
     };
 
     if (habits.length > 0) {
-      fetchPredictions();
+      calculateMountPredictions();
     } else {
       setLoading(false);
     }
@@ -105,83 +80,39 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
   }, []);
 
   const handleAddHabit = async (newHabit) => {
-    const habitWithTempPrediction = {
+    const tempHabit = {
       ...newHabit,
       prediction: {
         risk_score: "Low",
-        failure_probability: 0.0,
-        insights: ["Analyzing habit data..."],
-        interventions: ["Consulting AI behavioral model..."]
+        failure_probability: 0.1,
+        insights: ["Running AI analysis..."],
+        interventions: ["Calculating interventions..."]
       }
     };
-    
-    setHabits(current => [...current, habitWithTempPrediction]);
+    setHabits(current => [...current, tempHabit]);
 
-    try {
-      const response = await fetch('/api/predict_failure', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newHabit)
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setHabits(current => current.map(h => 
-          h.name === newHabit.name ? { ...h, prediction: data } : h
-        ));
-      } else {
-        throw new Error("HTTP error " + response.status);
-      }
-    } catch (e) {
-      console.error(e);
-      setHabits(current => current.map(h => 
-        h.name === newHabit.name ? {
-          ...h,
-          prediction: {
-            risk_score: "Low",
-            failure_probability: 0.1,
-            insights: ["Offline prediction fallback active."],
-            interventions: ["Keep consistent!"]
-          }
-        } : h
-      ));
-    }
+    const prediction = await analyzeHabitRisk(newHabit);
+    setHabits(current => current.map(h => 
+      h.name === newHabit.name ? { ...h, prediction } : h
+    ));
   };
 
   const handleEditHabit = async (oldName, updatedHabit) => {
-    const originalHabit = habits.find(h => h.name === oldName);
-    const requiresNewPrediction = originalHabit && 
-      (originalHabit.target_days_per_week !== updatedHabit.target_days_per_week || 
-       originalHabit.name !== updatedHabit.name);
-
-    if (requiresNewPrediction) {
-      updatedHabit.prediction = {
+    const tempHabit = {
+      ...updatedHabit,
+      prediction: {
         risk_score: "Low",
-        failure_probability: 0.0,
-        insights: ["Target updated. Re-analyzing habit..."],
-        interventions: ["Calculating new failure probability..."]
-      };
-    }
-
-    setHabits(current => current.map(h => h.name === oldName ? updatedHabit : h));
-
-    if (requiresNewPrediction) {
-      try {
-        const response = await fetch('/api/predict_failure', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedHabit)
-        });
-        if (response.ok) {
-          const prediction = await response.json();
-          setHabits(current => current.map(h => 
-            h.name === updatedHabit.name ? { ...h, prediction } : h
-          ));
-        }
-      } catch (e) {
-        console.error(e);
+        failure_probability: 0.1,
+        insights: ["Re-analyzing habit telemetry..."],
+        interventions: ["Calculating new guidelines..."]
       }
-    }
+    };
+    setHabits(current => current.map(h => h.name === oldName ? tempHabit : h));
+
+    const prediction = await analyzeHabitRisk(updatedHabit);
+    setHabits(current => current.map(h => 
+      h.name === updatedHabit.name ? { ...h, prediction } : h
+    ));
   };
 
   const handleDeleteHabit = (habitName) => {
@@ -208,37 +139,29 @@ export default function Dashboard({ habits, setHabits, goalPlans = [], onComplet
     };
 
     const baseHabitsList = customHabitsList || habits;
+    let targetHabit = null;
+
     const updatedHabits = baseHabitsList.map(h => {
       if (h.name === habitName) {
         const newStreak = h.current_streak + 1;
-        return {
+        targetHabit = {
           ...h,
           activities: [...h.activities, newActivity],
           current_streak: newStreak,
           longest_streak: Math.max(h.longest_streak, newStreak)
         };
+        return targetHabit;
       }
       return h;
     });
 
     setHabits(updatedHabits);
 
-    const targetHabit = updatedHabits.find(h => h.name === habitName);
-    try {
-      const response = await fetch('/api/predict_failure', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(targetHabit)
-      });
-      
-      if (response.ok) {
-        const prediction = await response.json();
-        setHabits(current => current.map(h => 
-          h.name === habitName ? { ...h, prediction } : h
-        ));
-      }
-    } catch (e) {
-      console.error(e);
+    if (targetHabit) {
+      const prediction = await analyzeHabitRisk(targetHabit);
+      setHabits(current => current.map(h => 
+        h.name === habitName ? { ...h, prediction } : h
+      ));
     }
   };
 

@@ -1,0 +1,16 @@
+# Netlify Configuration File
+# Place this in the frontend/ folder.
+# When deploying on Netlify:
+# - Set Base directory to: frontend
+# - Set Build command to: npm run build
+# - Set Publish directory to: frontend/dist
+
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[[redirects]]
+  # Rule for React Router / SPA routing fallback (redirects all requests to index.html)
+  from = "/*"
+  to = "/index.html"
+  status = 200

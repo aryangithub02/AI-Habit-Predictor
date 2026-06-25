@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import GoalOnboarding from './components/GoalOnboarding';
 import PlanReview from './components/PlanReview';
 import Dashboard from './components/Dashboard';
+import { generateGoalPlan } from './utils/aiEngine';
 
 const getTodayString = () => {
   const d = new Date();
@@ -73,21 +74,13 @@ function App() {
   const handleOnboardingSubmit = async (onboardingData) => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/generate-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(onboardingData)
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setGoalPlan(data);
-        setView('PLAN_REVIEW');
-      } else {
-        alert("Failed to generate plan. Please try again.");
-      }
+      const { initial_input, goal_category, answers } = onboardingData;
+      const plan = await generateGoalPlan(initial_input, goal_category, answers);
+      setGoalPlan(plan);
+      setView('PLAN_REVIEW');
     } catch (e) {
       console.error(e);
-      alert("Error contacting API backend. Please ensure the backend is running and accessible.");
+      alert("Failed to generate plan.");
     } finally {
       setIsLoading(false);
     }
