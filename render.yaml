@@ -1,0 +1,24 @@
+services:
+  # Python Backend Web Service (FastAPI)
+  - type: web
+    name: ai-habit-predictor-backend
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: OPENROUTER_API_KEY
+        value: "your-api-key-here"
+
+  # Frontend Static Site (Vite / React)
+  - type: web
+    name: ai-habit-predictor-frontend
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    publishPath: frontend/dist
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=0, must-revalidate
+    envVars:
+      - key: VITE_OPENROUTER_API_KEY
+        value: "your-api-key-here"
